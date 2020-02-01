@@ -1,0 +1,238 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Builds serverless API, complete with Lambda functions,
+  API Gateway, SQS Queues, DynamoDB table, and an S3 bucket.
+Globals:
+  Function:
+    Timeout: 3
+    Environment:
+      Variables:
+    #     TABLE_NAME: !Ref DemoTable
+        SQS_QUEUE_URL: !Ref DemoQueue
+Parameters:
+  DataBucketName:
+    Type: String
+    Description: S3 bucket where CSV files are placed
+    Default: gstafford-demo-data
+Resources:
+  # DemoServerlessApi:
+  #   Type: AWS::Serverless::Api
+  #   Properties:
+  #     StageName: Prod
+  # GetMessagesFunction:
+  #   Type: AWS::Serverless::Function
+  #   Description: Get all messages in DynamoDB table (scan)
+  #   Properties:
+  #     Description: Get all messages in DynamoDB table (scan)
+  #     CodeUri: lambda_apigtw_to_dynamodb/
+  #     Handler: app.getMessages
+  #     Runtime: nodejs10.x
+  #     Policies:
+  #       - DynamoDBCrudPolicy:
+  #           TableName: !Ref DemoTable
+  #     Events:
+  #       getMessages:
+  #         Type: Api
+  #         Properties:
+  #           Path: /message
+  #           Method: get
+  #           RestApiId: !Ref DemoServerlessApi
+  # GetMessageFunction:
+  #   Type: AWS::Serverless::Function
+  #   Description: Get single message based on timestamp and location
+  #   Properties:
+  #     Description: Get single message based on timestamp and location
+  #     CodeUri: lambda_apigtw_to_dynamodb/
+  #     Handler: app.getMessage
+  #     Runtime: nodejs10.x
+  #     Policies:
+  #       - DynamoDBCrudPolicy:
+  #           TableName: !Ref DemoTable
+  #     Events:
+  #       getMessages:
+  #         Type: Api
+  #         Properties:
+  #           Path: /message/{date}
+  #           Method: get
+  #           RestApiId: !Ref DemoServerlessApi
+  # PostMessageFunction:
+  #   Type: AWS::Serverless::Function
+  #   Description: Create new message item in DynamoDB table
+  #   Properties:
+  #     Description: Create new message item in DynamoDB table
+  #     CodeUri: lambda_apigtw_to_dynamodb/
+  #     Handler: app.postMessage
+  #     Runtime: nodejs10.x
+  #     Policies:
+  #       - DynamoDBCrudPolicy:
+  #           TableName: !Ref DemoTable
+  #     Events:
+  #       postMessage:
+  #         Type: Api
+  #         Properties:
+  #           Path: /message
+  #           Method: post
+  #           RestApiId: !Ref DemoServerlessApi
+  # PutMessageFunction:
+  #   Type: AWS::Serverless::Function
+  #   Description: Update message item in DynamoDB table
+  #   Properties:
+  #     Description: Update message item in DynamoDB table
+  #     CodeUri: lambda_apigtw_to_dynamodb/
+  #     Handler: app.putMessage
+  #     Runtime: nodejs10.x
+  #     Policies:
+  #       - DynamoDBCrudPolicy:
+  #           TableName: !Ref DemoTable
+  #     Events:
+  #       putMessage:
+  #         Type: Api
+  #         Properties:
+  #           Path: /message/{date}
+  #           Method: put
+  #           RestApiId: !Ref DemoServerlessApi
+  # DeleteMessageFunction:
+  #   Type: AWS::Serverless::Function
+  #   Description: Delete message item in DynamoDB table
+  #   Properties:
+  #     Description: Delete message item in DynamoDB table
+  #     CodeUri: lambda_apigtw_to_dynamodb/
+  #     Handler: app.deleteMessage
+  #     Runtime: nodejs10.x
+  #     Policies:
+  #       - DynamoDBCrudPolicy:
+  #           TableName: !Ref DemoTable
+  #     Events:
+  #       deleteMessage:
+  #         Type: Api
+  #         Properties:
+  #           Path: /message/{date}
+  #           Method: delete
+  #           RestApiId: !Ref DemoServerlessApi
+  # SqsToDynamoDbFunction:
+  #   Type: AWS::Serverless::Function
+  #   Description: Responds to SQS Event - Sends to Dynamodb
+  #   Properties:
+  #     Description: Post new message to SQS
+  #     CodeUri: lambda_sqs_to_dynamodb/
+  #     Handler: app.lambda_handler
+  #     Runtime: python3.7
+  #     Policies:
+  #       - DynamoDBCrudPolicy:
+  #           TableName: !Ref DemoTable
+  #     Events:
+  #       SqsToDynamoDb:
+  #         Type: SQS
+  #         Properties:
+  #           Queue: !GetAtt DemoQueue.Arn
+  #           BatchSize: 10
+  #           Enabled: true
+  DemoDataBucket:
+    Type: AWS::S3::Bucket
+    # DependsOn:
+    #   - S3ToSQSFunctionPermission
+    Properties:
+      BucketName: !Ref DataBucketName
+      # NotificationConfiguration:
+      #   LambdaConfigurations:
+      #     - Event: s3:ObjectCreated:*
+      #       Function: !GetAtt S3ToSQSFunction.Arn
+      #       Filter:
+      #         S3Key:
+      #           Rules:
+      #             - Name: suffix
+      #               Value: .csv
+  # S3ToSQSFunctionPermission:
+  #   Type: AWS::Lambda::Permission
+  #   Properties:
+  #     Action: 'lambda:InvokeFunction'
+  #     FunctionName: !Ref S3ToSQSFunction
+  #     Principal: s3.amazonaws.com
+  #     SourceArn: !Sub 'arn:aws:s3:::${DataBucketName}'
+  #     SourceAccount: !Ref AWS::AccountId
+  S3ToSQSExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: S3ToSQSRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvent
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - lambda:InvokeFunction
+                Resource: !Sub 'arn:aws:s3:::${DataBucketName}/*'
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: !GetAtt DemoQueue.Arn
+  S3ToSQSFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: S3ToSQS
+      Description: Responds to S3 Object Created Event - Sends to SQS
+      CodeUri: ../dist
+      Handler: toSQS
+      Runtime: go1.x
+      Role: !GetAtt S3ToSQSExecutionRole.Arn
+      Events:
+        S3ObjectCreated:
+          Type: S3
+          Properties:
+            Bucket: !Ref DemoDataBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                - Name: suffix
+                  Value: .json
+  # DemoTable:
+  #   Type: AWS::DynamoDB::Table
+  #   Properties:
+  #     BillingMode: PAY_PER_REQUEST
+  #     AttributeDefinitions:
+  #       - AttributeName: date
+  #         AttributeType: S
+  #       - AttributeName: time
+  #         AttributeType: S
+  #     KeySchema:
+  #       - AttributeName: date
+  #         KeyType: HASH
+  #       - AttributeName: time
+  #         KeyType: RANGE
+  DemoQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      RedrivePolicy:
+        deadLetterTargetArn:
+          Fn::GetAtt:
+            - DeadLetterQueue
+            - Arn
+        maxReceiveCount: 5
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+Outputs:
+  MyStacksRegion:
+    Description: 'Region where cfn stack is located'
+    Value: !Ref AWS::Region
+  DemoBucket:
+    Description: 'S3 bucket where CSV files are placed'
+    Value: !Ref DataBucketName
